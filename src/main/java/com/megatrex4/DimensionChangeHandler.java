@@ -33,7 +33,8 @@ public class DimensionChangeHandler {
         teleportStartTick.put(player, System.currentTimeMillis()); // Store the start time of teleportation
 
         // Get the partner from PlayerChainManager
-        ServerPlayerEntity partner = PlayerChainManager.getChainedPlayers().get(player);
+        ServerPlayerEntity partner = (ServerPlayerEntity) PlayerChainManager.getChainedPlayers().get(player);
+
 
         if (partner != null) {
             System.out.println("Partner " + partner.getName().getString() + " teleported to " + destination.getRegistryKey());

@@ -1,36 +1,40 @@
 package com.megatrex4;
 
+import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
 
 import java.util.HashMap;
 import java.util.Map;
 
 public class PlayerChainManager {
-    private static final Map<ServerPlayerEntity, ServerPlayerEntity> chainedPlayers = new HashMap<>();
+    private static final Map<PlayerEntity, PlayerEntity> chainedPlayers = new HashMap<>();
 
-    public static Map<ServerPlayerEntity, ServerPlayerEntity> getChainedPlayers() {
+    public static Map<PlayerEntity, PlayerEntity> getChainedPlayers() {
         return chainedPlayers;
     }
 
-    public void chainPlayers(ServerPlayerEntity player1, ServerPlayerEntity player2) {
+    // Chain two players (either PlayerEntity or ServerPlayerEntity)
+    public void chainPlayers(PlayerEntity player1, PlayerEntity player2) {
         chainedPlayers.put(player1, player2);
         chainedPlayers.put(player2, player1);
     }
 
-    public void unchainPlayers(ServerPlayerEntity player) {
-        ServerPlayerEntity partner = chainedPlayers.remove(player);
+    // Unchain a player
+    public void unchainPlayers(PlayerEntity player) {
+        PlayerEntity partner = chainedPlayers.remove(player);
         if (partner != null) {
             chainedPlayers.remove(partner);
         }
     }
 
+    // Specific method for ServerPlayerEntity
     public ServerPlayerEntity getChainedPartner(ServerPlayerEntity player) {
-        return chainedPlayers.get(player);
+        PlayerEntity partner = chainedPlayers.get(player);
+        return (partner instanceof ServerPlayerEntity) ? (ServerPlayerEntity) partner : null;
     }
 
-    public boolean isChained(ServerPlayerEntity player) {
+    // Check if a player is chained
+    public boolean isChained(PlayerEntity player) {
         return chainedPlayers.containsKey(player);
     }
 }
-

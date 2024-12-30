@@ -11,6 +11,8 @@ import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerWorldEvents;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
+import net.minecraft.util.math.BlockPos;
+import net.minecraft.world.World;
 
 import static com.megatrex4.MovementRestrictor.restrictMovement;
 
@@ -34,18 +36,21 @@ public class ChainedPlayers implements ModInitializer {
         DimensionChangeHandler.register();
 
 		ServerPlayerEvents.AFTER_RESPAWN.register((server, player, alive) -> {
+			// Temporarily disable any movement restrictions or chaining for the player after respawn
 			if (CHAIN_MANAGER.isChained(player)) {
 				ServerPlayerEntity partner = CHAIN_MANAGER.getChainedPartner(player);
-				if (partner != null && partner.isAlive()) {
-					// Teleport the player to their partner's position
-					player.teleport(partner.getX(), partner.getY(), partner.getZ());
-				} else {
-					// If no partner is alive, teleport the player to their spawn point
-					if (player.getSpawnPointPosition() != null) {
-						player.teleport(player.getSpawnPointPosition().getX(), player.getSpawnPointPosition().getY(), player.getSpawnPointPosition().getZ());
+				if (partner != null) {
+					// Temporarily unchain the player to allow free movement until fully synchronized
+					CHAIN_MANAGER.unchainPlayers(player);
+					System.out.println("[Player " + player.getName().getString() + "] Temporarily unchained after respawn.");
+
+					if (partner.isAlive()) {
+						playerDeathSync.teleportPlayerToPartner(player, partner);
+
+						CHAIN_MANAGER.chainPlayers(player, partner);
+						System.out.println("[Player " + player.getName().getString() + "] Re-chained to partner " + partner.getName().getString() + " after teleport.");
 					} else {
-						// Default to world spawn if no spawn point is set
-						player.teleport(player.getWorld().getSpawnPos().getX(), player.getWorld().getSpawnPos().getY(), player.getWorld().getSpawnPos().getZ());
+						System.out.println("[Player " + player.getName().getString() + "] Partner is not alive, no re-chain.");
 					}
 				}
 			}
@@ -54,20 +59,37 @@ public class ChainedPlayers implements ModInitializer {
 		// Register the server tick event handler
 		ServerTickEvents.END_SERVER_TICK.register(server -> {
 			for (var entry : PlayerChainManager.getChainedPlayers().entrySet()) {
-				ServerPlayerEntity player1 = entry.getKey();
-				ServerPlayerEntity player2 = entry.getValue();
+				ServerPlayerEntity player1 = (ServerPlayerEntity) entry.getKey();
+				ServerPlayerEntity player2 = (ServerPlayerEntity) entry.getValue();
 
 				PlayerChainManager chainManager = new PlayerChainManager();
 				chainManager.chainPlayers(player1, player2);
 
+				// Ensure players remain chained
+				if (!CHAIN_MANAGER.isChained(player1)) {
+					CHAIN_MANAGER.chainPlayers(player1, player2);
+					System.out.println("[Player " + player1.getName().getString() + "] Re-chained with partner " + player2.getName().getString() + ".");
+				}
 
 				int distance = ModConfig.BOTH.chainLength;
 
 //				restrictMovement(player1, player2, distance);
-				MovementPacket packet = new MovementPacket(player1.getX(), player1.getY(), player1.getZ());
-				movementHandler.handleMovementPacket(packet, player1.networkHandler);
+				MovementPacket packet1 = new MovementPacket(player1.getX(), player1.getY(), player1.getZ());
+				movementHandler.handleMovementPacket(packet1, player1.networkHandler);
+
+				MovementPacket packet2 = new MovementPacket(player2.getX(), player2.getY(), player2.getZ());
+				movementHandler.handleMovementPacket(packet2, player2.networkHandler);
 			}
 
 		});
 	}
+
+
+
+
+
+
+
+
+
 }
