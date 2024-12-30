@@ -1,6 +1,7 @@
 package com.megatrex4;
 
 import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.server.world.ServerWorld;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -12,10 +13,9 @@ public class PlayerChainManager {
         return chainedPlayers;
     }
 
-    public void chainPlayer(ServerPlayerEntity player1, ServerPlayerEntity player2) {
-        // Example logic to link two players
+    public void chainPlayers(ServerPlayerEntity player1, ServerPlayerEntity player2) {
         chainedPlayers.put(player1, player2);
-        // You can also add additional logic to manage their linked state, movement, etc.
+        chainedPlayers.put(player2, player1);
     }
 
     public void unchainPlayers(ServerPlayerEntity player) {
@@ -29,9 +29,8 @@ public class PlayerChainManager {
         return chainedPlayers.get(player);
     }
 
-
     public boolean isChained(ServerPlayerEntity player) {
         return chainedPlayers.containsKey(player);
     }
-
 }
+

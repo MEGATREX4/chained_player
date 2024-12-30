@@ -109,7 +109,7 @@ public class ChainCommand {
 
     private static void linkPlayers(ServerPlayerEntity player1, ServerPlayerEntity player2) {
         if (player1 != null && player2 != null) {
-            ChainedPlayers.CHAIN_MANAGER.chainPlayer(player1, player2);
+            ChainedPlayers.CHAIN_MANAGER.chainPlayers(player1, player2);
             player1.sendMessage(Text.translatable("command.chain.linked", player2.getName()), false);
             player2.sendMessage(Text.translatable("command.chain.linked", player1.getName()), false);
         }
