@@ -1,0 +1,14 @@
+{
+  "command.chain.self_link_error": "You cannot chain with yourself.",
+  "command.chain.request_message": "Player %s wants to chain with you. Do you accept?",
+  "command.chain.accept": "Accept",
+  "command.chain.deny": "Deny",
+  "command.chain.deny_message": "You have denied the chain request from %s.",
+  "command.chain.deny_notification": "%s has denied your chain request.",
+  "command.chain.linked": "You are now linked with %s.",
+  "command.chain.length_set": "Chain length has been set to %s.",
+  "command.chain.confirmation_set": "Chain confirmation is now %s.",
+  "command.chain.invalid_value": "Invalid value. Please provide 1, 0, true, or false.",
+  "command.chain.confirmation_enabled": "enabled",
+  "command.chain.confirmation_disabled": "disabled"
+}
