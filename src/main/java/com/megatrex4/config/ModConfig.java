@@ -30,12 +30,6 @@ public class ModConfig {
         @Translation(prefix = "option.chained.requireConfirmation")
         public boolean requireConfirmation = true;
 
-        @Comment("The pulling force multiplier, determines how strongly players pull each other.")
-        @Translation(prefix = "option.chained.pullForce")
-        @ValidatedInt.Restrict(min = 1, max = 10)
-        public int pullForce = 5; // Default value
-
-
         @Comment("The length of the chain")
         @Translation(prefix = "option.chained.chainLength")
         @ValidatedInt.Restrict(min = 1, max = 100)

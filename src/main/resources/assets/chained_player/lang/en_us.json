@@ -10,5 +10,6 @@
   "command.chain.confirmation_set": "Chain confirmation is now %s.",
   "command.chain.invalid_value": "Invalid value. Please provide 1, 0, true, or false.",
   "command.chain.confirmation_enabled": "enabled",
-  "command.chain.confirmation_disabled": "disabled"
+  "command.chain.confirmation_disabled": "disabled",
+  "command.chain.sender_request_message": "You send request to %s"
 }

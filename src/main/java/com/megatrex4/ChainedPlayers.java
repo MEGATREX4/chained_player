@@ -4,15 +4,12 @@ import com.megatrex4.commands.ChainCommand;
 import com.megatrex4.config.ModConfig;
 import com.megatrex4.network.MovementPacket;
 import com.megatrex4.network.NetworkRegistry;
-import net.fabricmc.api.ClientModInitializer;
-import net.fabricmc.api.EnvType;
-import net.fabricmc.api.Environment;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerWorldEvents;
 import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.network.ServerPlayNetworkHandler;
-import net.minecraft.util.Identifier;
+import net.minecraft.server.world.ServerWorld;
 
 import static com.megatrex4.MovementRestrictor.restrictMovement;
 
@@ -20,16 +17,12 @@ public class ChainedPlayers implements ModInitializer {
 
 	public static String MOD_ID = "chained_players";
 
-	// Make CHAIN_MANAGER static to allow access from static contexts
 	public static final PlayerChainManager CHAIN_MANAGER = new PlayerChainManager();
-
 	private final ServerMovementHandler movementHandler = new ServerMovementHandler();
 
 	@Override
 	public void onInitialize() {
-
 		ModConfig.saveConfig();
-
 		NetworkRegistry.registerPackets();
 
 		// Register the command once
@@ -46,15 +39,9 @@ public class ChainedPlayers implements ModInitializer {
 				int distance = ModConfig.BOTH.chainLength;
 
 				restrictMovement(player1, player2, distance);
-
 				MovementPacket packet = new MovementPacket(player1.getX(), player1.getY(), player1.getZ());
-				movementHandler.handleMovementPacket(packet, (ServerPlayNetworkHandler) player1.networkHandler);
+				movementHandler.handleMovementPacket(packet, player1.networkHandler);
 			}
 		});
 	}
-
-
-
-
-
 }

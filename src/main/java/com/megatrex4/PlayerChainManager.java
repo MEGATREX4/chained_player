@@ -33,4 +33,5 @@ public class PlayerChainManager {
     public boolean isChained(ServerPlayerEntity player) {
         return chainedPlayers.containsKey(player);
     }
+
 }
