@@ -1,10 +1,11 @@
 package com.megatrex4.network;
 
+import io.netty.buffer.Unpooled;
 import net.minecraft.network.PacketByteBuf;
 import net.minecraft.network.listener.ServerPlayPacketListener;
 import net.minecraft.network.packet.Packet;
-import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.network.ServerPlayNetworkHandler;
+import net.minecraft.server.network.ServerPlayerEntity;
 
 public class MovementPacket implements Packet<ServerPlayPacketListener> {
     private final double x, y, z;
@@ -37,11 +38,17 @@ public class MovementPacket implements Packet<ServerPlayPacketListener> {
 
     @Override
     public void apply(ServerPlayPacketListener listener) {
-        // Correct way to get player from ServerPlayNetworkHandler
         ServerPlayNetworkHandler networkHandler = (ServerPlayNetworkHandler) listener;
         ServerPlayerEntity player = networkHandler.getPlayer();
 
         // Update the player's position
         player.setPos(x, y, z);
+    }
+
+    // Convert the packet to PacketByteBuf for networking
+    public PacketByteBuf toPacketByteBuf() {
+        PacketByteBuf buf = new PacketByteBuf(Unpooled.buffer());
+        this.write(buf);
+        return buf;
     }
 }

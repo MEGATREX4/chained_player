@@ -11,19 +11,28 @@ public class playerDeathSync {
 
     public static void teleportPlayerToPartner(ServerPlayerEntity player, ServerPlayerEntity partner) {
         if (partner != null && partner.isAlive()) {
+            // Check if the player is in teleportation state
+            if (TeleportationManager.isInTeleportationState(player)) {
+                System.out.println("[Player " + player.getName().getString() + "] Waiting for teleportation to complete before re-chaining.");
+                return; // Don't proceed with teleportation or chaining
+            }
+
+            // Mark player as in teleportation state
+            TeleportationManager.setInTeleportationState(player, true);
+
+            // Handle teleportation here (either delayed or immediate, depending on your logic)
             if (player.getWorld() != partner.getWorld()) {
-                BlockPos partnerPos = new BlockPos((int)partner.getX(), (int)partner.getY(), (int)partner.getZ());
+                BlockPos partnerPos = new BlockPos((int) partner.getX(), (int) partner.getY(), (int) partner.getZ());
+                BlockPos validPos = findNearestSolidBlock(player, partner, partnerPos.getX(), partnerPos.getY() + 1, partnerPos.getZ(), ModConfig.BOTH.chainLength);
 
-                BlockPos validPos = findNearestSolidBlock(player, partner, partnerPos.getX(), partnerPos.getY(), partnerPos.getZ(), ModConfig.BOTH.chainLength);
-
+                // Schedule teleportation
                 if (validPos != null) {
                     new DelayedTeleportation(player, (ServerWorld) partner.getWorld(), validPos.getX(), validPos.getY(), validPos.getZ()).schedule();
                 } else {
                     new DelayedTeleportation(player, (ServerWorld) partner.getWorld(), partner.getX(), partner.getY(), partner.getZ()).schedule();
                 }
             } else {
-                BlockPos validPos = findNearestSolidBlock(player, partner, partner.getX(), partner.getY(), partner.getZ(), ModConfig.BOTH.chainLength);
-
+                BlockPos validPos = findNearestSolidBlock(player, partner, partner.getX(), partner.getY() + 1, partner.getZ(), ModConfig.BOTH.chainLength);
                 if (validPos != null) {
                     new DelayedTeleportation(player, (ServerWorld) partner.getWorld(), validPos.getX(), validPos.getY(), validPos.getZ()).schedule();
                 } else {
@@ -32,6 +41,7 @@ public class playerDeathSync {
             }
         }
     }
+
 
     private static BlockPos findNearestSolidBlock(ServerPlayerEntity player, ServerPlayerEntity partner, double partnerX, double partnerY, double partnerZ, double maxDistance) {
         // Determine which world to search in
