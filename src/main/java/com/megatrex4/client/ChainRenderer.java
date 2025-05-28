@@ -3,6 +3,7 @@ package com.megatrex4.client;
 import com.megatrex4.config.ModConfig;
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
+import net.minecraft.block.BlockState;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.render.BufferBuilder;
 import net.minecraft.client.render.GameRenderer;
@@ -11,7 +12,10 @@ import net.minecraft.client.render.VertexFormat;
 import net.minecraft.client.render.VertexFormats;
 import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.LightType;
 import net.minecraft.world.World;
 import org.joml.Matrix4f;
 
@@ -43,11 +47,11 @@ public class ChainRenderer {
 
             RenderSystem.enableBlend();
             RenderSystem.defaultBlendFunc();
-            RenderSystem.disableDepthTest();
-            RenderSystem.depthMask(false);
+            RenderSystem.enableDepthTest();           // враховуємо блоки
+            RenderSystem.depthMask(true);
             RenderSystem.setShader(GameRenderer::getPositionColorProgram);
 
-            // Анкери: від очей локального та очей партнера, зміщені -0.3
+            // Анкери: від очей локального та очей партнера, -0.3
             Vec3d eyeA = local.getLerpedPos(delta)
                     .add(0, local.getEyeHeight(local.getPose()) - 0.3, 0)
                     .subtract(camPos);
@@ -56,11 +60,11 @@ public class ChainRenderer {
                     .subtract(camPos);
 
             if (eyeA.distanceTo(eyeB) <= MAX_RENDER_DISTANCE) {
-                renderThickChain(ms, eyeA, eyeB, client.world, camPos);
+                renderThickChain(ms, eyeA, eyeB, world, camPos);
             }
 
-            RenderSystem.enableDepthTest();
-            RenderSystem.depthMask(true);
+            RenderSystem.disableDepthTest();
+            RenderSystem.depthMask(false);
             RenderSystem.disableBlend();
         });
     }
@@ -71,7 +75,6 @@ public class ChainRenderer {
             World world,
             Vec3d camPos) {
 
-        // без параболи — просто пряма лінія
         double dist   = from.distanceTo(to);
         int segments  = Math.max(1, (int)Math.ceil(dist / SEGMENT_LENGTH));
         Matrix4f mat  = ms.peek().getPositionMatrix();
@@ -84,39 +87,55 @@ public class ChainRenderer {
         for (int i = 0; i < segments; i++) {
             float t0 = i       / (float)segments;
             float t1 = (i + 1) / (float)segments;
-
-            // лінійна інтерполяція без провисання
             Vec3d p0 = from.lerp(to, t0);
             Vec3d p1 = from.lerp(to, t1);
 
+            // пропускаємо сегмент, якщо середня точка всередині непрозорого блоку
+            Vec3d mid = p0.add(p1).multiply(0.5).add(camPos);
+            BlockPos midPos = new BlockPos(
+                    MathHelper.floor(mid.x),
+                    MathHelper.floor(mid.y),
+                    MathHelper.floor(mid.z)
+            );
+            BlockState bs = world.getBlockState(midPos);
+            if (bs.isOpaqueFullCube(world, midPos)) continue;
+
+            // напрям і перпендикуляри
             Vec3d dir   = p1.subtract(p0).normalize();
-            Vec3d perp1 = dir.crossProduct(new Vec3d(0, 1, 0))
-                    .normalize()
-                    .multiply(CHAIN_WIDTH / 2);
-            Vec3d perp2 = dir.crossProduct(perp1)
-                    .normalize()
-                    .multiply(CHAIN_WIDTH / 2);
+            Vec3d perp1 = dir.crossProduct(new Vec3d(0, 1, 0)).normalize().multiply(CHAIN_WIDTH/2);
+            Vec3d perp2 = dir.crossProduct(perp1).normalize().multiply(CHAIN_WIDTH/2);
 
             int base = (i % 2 == 0) ? COLOR_LIGHT : COLOR_DARK;
 
-            // малюємо два перехрещених квадрати
-            buf.vertex(mat, (float)(p0.x + perp1.x), (float)(p0.y + perp1.y), (float)(p0.z + perp1.z))
-                    .color(base, base, base, (int)(CHAIN_ALPHA * 255)).next();
-            buf.vertex(mat, (float)(p0.x - perp1.x), (float)(p0.y - perp1.y), (float)(p0.z - perp1.z))
-                    .color(base, base, base, (int)(CHAIN_ALPHA * 255)).next();
-            buf.vertex(mat, (float)(p1.x - perp1.x), (float)(p1.y - perp1.y), (float)(p1.z - perp1.z))
-                    .color(base, base, base, (int)(CHAIN_ALPHA * 255)).next();
-            buf.vertex(mat, (float)(p1.x + perp1.x), (float)(p1.y + perp1.y), (float)(p1.z + perp1.z))
-                    .color(base, base, base, (int)(CHAIN_ALPHA * 255)).next();
+            // світловий рівень
+            int blk = world.getLightLevel(LightType.BLOCK, midPos);
+            int sky = world.getLightLevel(LightType.SKY,   midPos);
+            float bright = MathHelper.clamp((blk + sky)/30f, 0.4f, 1f);
 
-            buf.vertex(mat, (float)(p0.x + perp2.x), (float)(p0.y + perp2.y), (float)(p0.z + perp2.z))
-                    .color(base, base, base, (int)(CHAIN_ALPHA * 255)).next();
-            buf.vertex(mat, (float)(p0.x - perp2.x), (float)(p0.y - perp2.y), (float)(p0.z - perp2.z))
-                    .color(base, base, base, (int)(CHAIN_ALPHA * 255)).next();
-            buf.vertex(mat, (float)(p1.x - perp2.x), (float)(p1.y - perp2.y), (float)(p1.z - perp2.z))
-                    .color(base, base, base, (int)(CHAIN_ALPHA * 255)).next();
-            buf.vertex(mat, (float)(p1.x + perp2.x), (float)(p1.y + perp2.y), (float)(p1.z + perp2.z))
-                    .color(base, base, base, (int)(CHAIN_ALPHA * 255)).next();
+            // ambient occlusion: перевіряємо 4 сусідніх блоки
+            int occ = 0;
+            for (Vec3d off : new Vec3d[]{new Vec3d(1,0,0),new Vec3d(-1,0,0),new Vec3d(0,0,1),new Vec3d(0,0,-1)}) {
+                BlockPos adj = midPos.add((int)off.x,(int)off.y,(int)off.z);
+                if (world.getBlockState(adj).isOpaqueFullCube(world, adj)) occ++;
+            }
+            float ao = 1f - 0.2f * occ;
+            bright *= ao;
+
+            int r = (int)(((base>>16)&0xFF)*bright);
+            int g = (int)(((base>>8)&0xFF)*bright);
+            int b = (int)(( base     &0xFF)*bright);
+            int a = (int)(CHAIN_ALPHA*255);
+
+            // малюємо два перехрещених квадрати
+            buf.vertex(mat, (float)(p0.x+perp1.x), (float)(p0.y+perp1.y), (float)(p0.z+perp1.z)).color(r,g,b,a).next();
+            buf.vertex(mat, (float)(p0.x-perp1.x), (float)(p0.y-perp1.y), (float)(p0.z-perp1.z)).color(r,g,b,a).next();
+            buf.vertex(mat, (float)(p1.x-perp1.x), (float)(p1.y-perp1.y), (float)(p1.z-perp1.z)).color(r,g,b,a).next();
+            buf.vertex(mat, (float)(p1.x+perp1.x), (float)(p1.y+perp1.y), (float)(p1.z+perp1.z)).color(r,g,b,a).next();
+
+            buf.vertex(mat, (float)(p0.x+perp2.x), (float)(p0.y+perp2.y), (float)(p0.z+perp2.z)).color(r,g,b,a).next();
+            buf.vertex(mat, (float)(p0.x-perp2.x), (float)(p0.y-perp2.y), (float)(p0.z-perp2.z)).color(r,g,b,a).next();
+            buf.vertex(mat, (float)(p1.x-perp2.x), (float)(p1.y-perp2.y), (float)(p1.z-perp2.z)).color(r,g,b,a).next();
+            buf.vertex(mat, (float)(p1.x+perp2.x), (float)(p1.y+perp2.y), (float)(p1.z+perp2.z)).color(r,g,b,a).next();
         }
 
         tes.draw();
