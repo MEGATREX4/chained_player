@@ -17,6 +17,9 @@
 	"entrypoints": {
 		"main": [
 			"com.megatrex4.ChainedPlayers"
+		],
+		"client": [
+			"com.megatrex4.ChainedPlayersClient"
 		]
 	},
 	"mixins": [

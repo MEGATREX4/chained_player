@@ -1,12 +1,20 @@
 package com.megatrex4;
 
+import com.megatrex4.network.ChainSyncPacket;
+import io.netty.buffer.Unpooled;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.network.PacketByteBuf;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerPlayerEntity;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.logging.Logger;
 
 public class PlayerChainManager {
@@ -40,7 +48,7 @@ public class PlayerChainManager {
 
 
     // Chain two players
-    public void chainPlayers(PlayerEntity player1, PlayerEntity player2) {
+    public void chainPlayers(PlayerEntity player1, PlayerEntity player2, MinecraftServer server) {
         if (isTemporarilyUnchained(player1)) {
             tempUnchained.remove(player1);
         }
@@ -56,11 +64,14 @@ public class PlayerChainManager {
         MovementRestrictor.setRestrict((ServerPlayerEntity) player1, true);
         MovementRestrictor.setRestrict((ServerPlayerEntity) player2, true);
 
+        // Sync chains to all players
+        syncChainsToAll(server);
+
         logState("chainPlayers");
     }
 
     // Unchain a player
-    public void unchainPlayers(PlayerEntity player) {
+    public void unchainPlayers(PlayerEntity player, MinecraftServer server) {
         PlayerEntity partner = chainedPlayers.remove(player);
         if (partner != null) {
             chainedPlayers.remove(partner);
@@ -71,6 +82,9 @@ public class PlayerChainManager {
         if (partner != null) {
             MovementRestrictor.setRestrict((ServerPlayerEntity) partner, false);
         }
+
+        // Sync chains to all players
+        syncChainsToAll(server);
 
         logState("unchainPlayers");
     }
@@ -134,5 +148,29 @@ public class PlayerChainManager {
     // Check if a player is temporarily unchained
     public boolean isTemporarilyUnchained(PlayerEntity player) {
         return tempUnchained.containsKey(player);
+    }
+
+    // Replace the syncChainsToAll method in PlayerChainManager.java with this:
+
+    public static void syncChainsToAll(MinecraftServer server) {
+        List<ChainSyncPacket.Pair<UUID, UUID>> pairs = new ArrayList<>();
+        for (var entry : chainedPlayers.entrySet()) {
+            UUID uuid1 = entry.getKey().getUuid();
+            UUID uuid2 = entry.getValue().getUuid();
+            if (uuid1.compareTo(uuid2) < 0) { // Only send each pair once
+                pairs.add(new ChainSyncPacket.Pair<>(uuid1, uuid2));
+            }
+        }
+
+        ChainSyncPacket packet = new ChainSyncPacket(pairs);
+
+        System.out.println("[Chain Sync] Sending " + pairs.size() + " chain pairs to clients");
+
+        for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
+            // Create a new buffer for each player to avoid reuse issues
+            PacketByteBuf buf = new PacketByteBuf(Unpooled.buffer());
+            packet.write(buf);
+            ServerPlayNetworking.send(player, ChainSyncPacket.ID, buf);
+        }
     }
 }

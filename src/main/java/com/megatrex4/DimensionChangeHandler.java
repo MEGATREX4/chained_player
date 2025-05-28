@@ -13,6 +13,7 @@ import java.util.Set;
 public class DimensionChangeHandler {
     private static final Map<ServerPlayerEntity, Boolean> teleportInProgress = new HashMap<>();
     private static final Map<ServerPlayerEntity, Long> teleportStartTick = new HashMap<>(); // Map to store when teleportation started
+    private static final Set<ServerPlayerEntity> syncingPlayers = new HashSet<>();
 
     public static void register() {
         ServerEntityWorldChangeEvents.AFTER_PLAYER_CHANGE_WORLD.register(DimensionChangeHandler::onPlayerWorldChange);
@@ -20,39 +21,33 @@ public class DimensionChangeHandler {
     }
 
     private static void onPlayerWorldChange(ServerPlayerEntity player, ServerWorld origin, ServerWorld destination) {
-        System.out.println("Player " + player.getName().getString() + " changed dimension from " + origin.getRegistryKey() + " to " + destination.getRegistryKey());
+        ServerPlayerEntity partner = (ServerPlayerEntity) PlayerChainManager.getChainedPlayers().get(player);
 
-        // Avoid teleporting the player if it's already in progress
-        if (teleportInProgress.getOrDefault(player, false)) {
-            System.out.println("Teleportation already in progress for " + player.getName().getString());
+        if (partner == null) return;
+
+        // If either player is already syncing, don't trigger another teleport
+        if (isSyncing(player) || isSyncing(partner)) {
+            System.out.println("Sync already in progress for " + player.getName().getString() + " or partner.");
             return;
         }
 
-        // Mark the teleportation as in progress for the player
-        teleportInProgress.put(player, true);
-        teleportStartTick.put(player, System.currentTimeMillis()); // Store the start time of teleportation
+        // Mark both as syncing
+        setSyncing(player, true);
+        setSyncing(partner, true);
 
-        // Get the partner from PlayerChainManager
-        ServerPlayerEntity partner = (ServerPlayerEntity) PlayerChainManager.getChainedPlayers().get(player);
-
-
-        if (partner != null) {
-            System.out.println("Partner " + partner.getName().getString() + " teleported to " + destination.getRegistryKey());
-
-            // If partner is in a different world, schedule the teleportation to the new world at the entering player's coordinates
-            if (partner.getWorld() != destination) {
-                // Use the entering player's coordinates (x, y, z)
-                double x = player.getX();
-                double y = player.getY();
-                double z = player.getZ();
-
-                // Schedule the teleportation using the DelayedTeleportation class
-                new DelayedTeleportation(partner, destination, x, y, z).schedule();
-                System.out.println("Scheduled partner teleportation to: " + x + ", " + y + ", " + z);
-            }
-        } else {
-            System.out.println("No partner found for " + player.getName().getString());
+        // If partner is not in the destination world, teleport them
+        if (partner.getWorld() != destination) {
+            new DelayedTeleportation(partner, destination, player.getX(), player.getY(), player.getZ()).schedule();
+            System.out.println("Teleporting partner " + partner.getName().getString() + " to " + destination.getRegistryKey());
         }
+
+        // Schedule a check to clear syncing state when both are in the same world
+        ServerTickEvents.END_SERVER_TICK.register(server -> {
+            if (player.getWorld() == partner.getWorld()) {
+                setSyncing(player, false);
+                setSyncing(partner, false);
+            }
+        });
     }
 
     // Listener for server ticks
@@ -72,6 +67,18 @@ public class DimensionChangeHandler {
                 }
             }
         });
+    }
+
+    public static boolean isSyncing(ServerPlayerEntity player) {
+        return syncingPlayers.contains(player);
+    }
+
+    private static void setSyncing(ServerPlayerEntity player, boolean syncing) {
+        if (syncing) {
+            syncingPlayers.add(player);
+        } else {
+            syncingPlayers.remove(player);
+        }
     }
 
 }

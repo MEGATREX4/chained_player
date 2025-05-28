@@ -7,6 +7,7 @@ import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import net.minecraft.command.CommandRegistryAccess;
 import net.minecraft.command.argument.EntityArgumentType;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.command.CommandManager;
 import net.minecraft.server.command.ServerCommandSource;
 import net.minecraft.server.network.ServerPlayerEntity;
@@ -39,10 +40,10 @@ public class ChainCommand {
                                     sendConfirmationMessage(player1, player2);
                                     sendMessageToSender(player1, player2);
                                 } else {
-                                    linkPlayers(player1, player2);
+                                    linkPlayers(player1, player2, context.getSource().getServer());
                                 }
                             } else {
-                                linkPlayers(null, player2);
+                                linkPlayers(null, player2, context.getSource().getServer());
                             }
 
                             return 1;
@@ -63,7 +64,7 @@ public class ChainCommand {
                                         return 0;
                                     }
 
-                                    linkPlayers(player1, player2);
+                                    linkPlayers(player1, player2, context.getSource().getServer());
                                     return 1;
                                 })
                         )
@@ -93,9 +94,9 @@ public class ChainCommand {
     }
 
     private static void sendConfirmationMessage(ServerPlayerEntity player1, ServerPlayerEntity player2) {
-        Text message = Text.translatable("command.chain.request_message", player1.getName().getString()) // Use %s placeholder here
+        Text message = Text.translatable("command.chain.request_message", player1.getName().getString())
                 .append(Text.translatable("command.chain.accept")
-                        .formatted(Formatting.GREEN) // Green for accept
+                        .formatted(Formatting.GREEN)
                         .styled(style -> style.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/chain accept " + player1.getName().getString()))))
                 .append(Text.literal(" ")
                         .append(Text.translatable("command.chain.deny")
@@ -105,13 +106,12 @@ public class ChainCommand {
         player2.sendMessage(message, false);
     }
 
-
-
-    private static void linkPlayers(ServerPlayerEntity player1, ServerPlayerEntity player2) {
+    private static void linkPlayers(ServerPlayerEntity player1, ServerPlayerEntity player2, MinecraftServer server) {
         if (player1 != null && player2 != null) {
-            ChainedPlayers.CHAIN_MANAGER.chainPlayers(player1, player2);
+            ChainedPlayers.CHAIN_MANAGER.chainPlayers(player1, player2, server);
             player1.sendMessage(Text.translatable("command.chain.linked", player2.getName()), false);
             player2.sendMessage(Text.translatable("command.chain.linked", player1.getName()), false);
         }
     }
 }
+
