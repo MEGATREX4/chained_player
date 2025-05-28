@@ -29,6 +29,12 @@ public class ChainRenderer {
     private static final int   COLOR_LIGHT         = 0xBBBBBB;
     private static final int   COLOR_DARK          = 0x666666;
 
+    // Фіксована кількість сегментів: ceil(maxLen / SEGMENT_LENGTH)
+    private static final int FIXED_SEGMENTS = Math.max(
+            1,
+            (int) Math.ceil(ModConfig.BOTH.chainLength / SEGMENT_LENGTH)
+    );
+
     public static void register() {
         WorldRenderEvents.LAST.register(ctx -> {
             MinecraftClient client = MinecraftClient.getInstance();
@@ -63,15 +69,13 @@ public class ChainRenderer {
             World world,
             Vec3d camPos
     ) {
-        double dist     = from.distanceTo(to);
-        int    segments = Math.max(1, (int)Math.ceil(dist / SEGMENT_LENGTH));
-        double h        = computeH(dist);
+        double dist = from.distanceTo(to);
+        double h    = computeH(dist);
 
         Matrix4f mat    = ms.peek().getPositionMatrix();
         Tessellator tes = Tessellator.getInstance();
         BufferBuilder buf = tes.getBuffer();
 
-        // початкові налаштування рендеру
         RenderSystem.enableBlend();
         RenderSystem.defaultBlendFunc();
         RenderSystem.enableDepthTest();
@@ -80,9 +84,9 @@ public class ChainRenderer {
         RenderSystem.disableCull();
 
         buf.begin(VertexFormat.DrawMode.QUADS, VertexFormats.POSITION_COLOR);
-        for (int i = 0; i < segments; i++) {
-            float t0 = i       / (float)segments;
-            float t1 = (i + 1) / (float)segments;
+        for (int i = 0; i < FIXED_SEGMENTS; i++) {
+            float t0 = i       / (float)FIXED_SEGMENTS;
+            float t1 = (i + 1) / (float)FIXED_SEGMENTS;
 
             Vec3d base0 = from.lerp(to, t0);
             Vec3d base1 = from.lerp(to, t1);
@@ -90,20 +94,18 @@ public class ChainRenderer {
             float sag0 = computeParabolaSag(t0, h);
             float sag1 = computeParabolaSag(t1, h);
 
-            // світові координати точок
             double wx0 = base0.x + camPos.x, wz0 = base0.z + camPos.z, wy0 = base0.y + camPos.y;
             double wx1 = base1.x + camPos.x, wz1 = base1.z + camPos.z, wy1 = base1.y + camPos.y;
 
-            // обмежуємо провисання землею + 0.05
             double ground0 = sampleGroundHeight(world, wx0, wz0, wy0);
             double ground1 = sampleGroundHeight(world, wx1, wz1, wy1);
+
             sag0 = Math.max(sag0, (float)(ground0 - wy0));
             sag1 = Math.max(sag1, (float)(ground1 - wy1));
 
             Vec3d p0 = new Vec3d(base0.x, base0.y + sag0, base0.z);
             Vec3d p1 = new Vec3d(base1.x, base1.y + sag1, base1.z);
 
-            // перевірка блоку всередині сегмента
             Vec3d mid = p0.add(p1).multiply(0.5).add(camPos);
             BlockPos midPos = new BlockPos(
                     MathHelper.floor(mid.x),
@@ -112,14 +114,14 @@ public class ChainRenderer {
             );
             if (world.getBlockState(midPos).isOpaqueFullCube(world, midPos)) continue;
 
-            // напрям і перпендикуляри
             Vec3d dir   = p1.subtract(p0).normalize();
-            Vec3d perp1 = dir.crossProduct(new Vec3d(0,1,0)).normalize().multiply(CHAIN_WIDTH/2);
-            Vec3d perp2 = dir.crossProduct(perp1).normalize().multiply(CHAIN_WIDTH/2);
+            Vec3d perp1 = dir.crossProduct(new Vec3d(0,1,0))
+                    .normalize().multiply(CHAIN_WIDTH/2);
+            Vec3d perp2 = dir.crossProduct(perp1)
+                    .normalize().multiply(CHAIN_WIDTH/2);
 
             int baseCol = (i % 2 == 0) ? COLOR_LIGHT : COLOR_DARK;
 
-            // освітлення та AO
             int blk = world.getLightLevel(LightType.BLOCK, midPos);
             int sky = world.getLightLevel(LightType.SKY,   midPos);
             float bright = MathHelper.clamp((blk + sky)/30f, 0.4f, 1f);
@@ -138,7 +140,6 @@ public class ChainRenderer {
             int b = (int)(( baseCol     &0xFF)*bright);
             int a = (int)(CHAIN_ALPHA*255);
 
-            // малюємо квадрати
             buf.vertex(mat, (float)(p0.x+perp1.x),(float)(p0.y+perp1.y),(float)(p0.z+perp1.z))
                     .color(r,g,b,a).next();
             buf.vertex(mat, (float)(p0.x-perp1.x),(float)(p0.y-perp1.y),(float)(p0.z-perp1.z))
@@ -159,24 +160,20 @@ public class ChainRenderer {
         }
         tes.draw();
 
-        // відновлюємо стани
         RenderSystem.enableCull();
         RenderSystem.disableBlend();
     }
 
-    // обчислює “провисання” параболи
     private static double computeH(double dist) {
         double maxLen = ModConfig.BOTH.chainLength;
         double slack  = Math.max(0.0, maxLen - dist);
         return Math.sqrt(3 * dist * slack / 8.0);
     }
 
-    // параболічна функція y = 4h·t·(t–1)
     private static float computeParabolaSag(float t, double h) {
         return (float)(4 * h * t * (t - 1));
     }
 
-    // шукає поверхню (y верхньої границі блоку) + невеликий офсет
     private static double sampleGroundHeight(World world, double x, double z, double startY) {
         int ix = MathHelper.floor(x);
         int iz = MathHelper.floor(z);
