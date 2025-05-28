@@ -11,11 +11,8 @@ import net.minecraft.client.render.VertexFormat;
 import net.minecraft.client.render.VertexFormats;
 import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Vec3d;
-import net.minecraft.world.LightType;
 import net.minecraft.world.World;
-import net.minecraft.util.math.MathHelper;
 import org.joml.Matrix4f;
 
 import java.util.UUID;
@@ -52,15 +49,14 @@ public class ChainRenderer {
 
             // Анкери: від очей локального та очей партнера, зміщені -0.3
             Vec3d eyeA = local.getLerpedPos(delta)
-                    .add(0, local.getEyeHeight(local.getPose()) - 0.3, 0);
+                    .add(0, local.getEyeHeight(local.getPose()) - 0.3, 0)
+                    .subtract(camPos);
             Vec3d eyeB = partner.getLerpedPos(delta)
-                    .add(0, partner.getEyeHeight(partner.getPose()) - 0.3, 0);
+                    .add(0, partner.getEyeHeight(partner.getPose()) - 0.3, 0)
+                    .subtract(camPos);
 
-            Vec3d from = eyeA.subtract(camPos);
-            Vec3d to   = eyeB.subtract(camPos);
-
-            if (from.distanceTo(to) <= MAX_RENDER_DISTANCE) {
-                renderThickChain(ms, from, to, world, camPos);
+            if (eyeA.distanceTo(eyeB) <= MAX_RENDER_DISTANCE) {
+                renderThickChain(ms, eyeA, eyeB, client.world, camPos);
             }
 
             RenderSystem.enableDepthTest();
@@ -75,31 +71,13 @@ public class ChainRenderer {
             World world,
             Vec3d camPos) {
 
-        // обчислити базовий прогин параболою
+        // без параболи — просто пряма лінія
         double dist   = from.distanceTo(to);
-        double maxLen = ModConfig.BOTH.chainLength;
-        double sag    = dist < maxLen
-                ? (maxLen - dist) * 0.5
-                : 0.0;
-
-        // знайти реальні світові позиції очей
-        Vec3d worldA = from.add(camPos);
-        Vec3d worldB = to.add(camPos);
-
-        // обмежити провисання між очима та землею
-        double groundYA = findGroundY(world, worldA).y;
-        double groundYB = findGroundY(world, worldB).y;
-        double eyeYA    = worldA.y;
-        double eyeYB    = worldB.y;
-        double maxSag   = Math.min(eyeYA - groundYA, eyeYB - groundYB);
-        sag = Math.min(sag, maxSag);
-
-        int segments = Math.max(1, (int)Math.ceil(dist / SEGMENT_LENGTH));
-        Matrix4f mat = ms.peek().getPositionMatrix();
+        int segments  = Math.max(1, (int)Math.ceil(dist / SEGMENT_LENGTH));
+        Matrix4f mat  = ms.peek().getPositionMatrix();
         Tessellator tes = Tessellator.getInstance();
         BufferBuilder buf = tes.getBuffer();
 
-        // виключити culling, щоб ланцюг був видно з усіх боків
         RenderSystem.disableCull();
         buf.begin(VertexFormat.DrawMode.QUADS, VertexFormats.POSITION_COLOR);
 
@@ -107,8 +85,9 @@ public class ChainRenderer {
             float t0 = i       / (float)segments;
             float t1 = (i + 1) / (float)segments;
 
-            Vec3d p0 = calculateChainPosition(from, to, t0, sag);
-            Vec3d p1 = calculateChainPosition(from, to, t1, sag);
+            // лінійна інтерполяція без провисання
+            Vec3d p0 = from.lerp(to, t0);
+            Vec3d p1 = from.lerp(to, t1);
 
             Vec3d dir   = p1.subtract(p0).normalize();
             Vec3d perp1 = dir.crossProduct(new Vec3d(0, 1, 0))
@@ -120,55 +99,27 @@ public class ChainRenderer {
 
             int base = (i % 2 == 0) ? COLOR_LIGHT : COLOR_DARK;
 
-            // освітлення сегмента
-            Vec3d midRel   = p0.add(p1).multiply(0.5);
-            Vec3d worldMid = midRel.add(camPos);
-            BlockPos sample = new BlockPos(
-                    MathHelper.floor(worldMid.x),
-                    MathHelper.floor(worldMid.y),
-                    MathHelper.floor(worldMid.z)
-            );
-            int blk     = world.getLightLevel(LightType.BLOCK, sample);
-            int sky     = world.getLightLevel(LightType.SKY,   sample);
-            float bright = MathHelper.clamp((blk + sky) / 30f, 0.4f, 1f);
+            // малюємо два перехрещених квадрати
+            buf.vertex(mat, (float)(p0.x + perp1.x), (float)(p0.y + perp1.y), (float)(p0.z + perp1.z))
+                    .color(base, base, base, (int)(CHAIN_ALPHA * 255)).next();
+            buf.vertex(mat, (float)(p0.x - perp1.x), (float)(p0.y - perp1.y), (float)(p0.z - perp1.z))
+                    .color(base, base, base, (int)(CHAIN_ALPHA * 255)).next();
+            buf.vertex(mat, (float)(p1.x - perp1.x), (float)(p1.y - perp1.y), (float)(p1.z - perp1.z))
+                    .color(base, base, base, (int)(CHAIN_ALPHA * 255)).next();
+            buf.vertex(mat, (float)(p1.x + perp1.x), (float)(p1.y + perp1.y), (float)(p1.z + perp1.z))
+                    .color(base, base, base, (int)(CHAIN_ALPHA * 255)).next();
 
-            int r = (int)(((base >> 16) & 0xFF) * bright);
-            int g = (int)(((base >> 8)  & 0xFF) * bright);
-            int b = (int)(( base        & 0xFF) * bright);
-            int a = (int)(CHAIN_ALPHA * 255);
-
-            // два перехрещених квадрати
-            buf.vertex(mat, (float)(p0.x + perp1.x), (float)(p0.y + perp1.y), (float)(p0.z + perp1.z)).color(r, g, b, a).next();
-            buf.vertex(mat, (float)(p0.x - perp1.x), (float)(p0.y - perp1.y), (float)(p0.z - perp1.z)).color(r, g, b, a).next();
-            buf.vertex(mat, (float)(p1.x - perp1.x), (float)(p1.y - perp1.y), (float)(p1.z - perp1.z)).color(r, g, b, a).next();
-            buf.vertex(mat, (float)(p1.x + perp1.x), (float)(p1.y + perp1.y), (float)(p1.z + perp1.z)).color(r, g, b, a).next();
-
-            buf.vertex(mat, (float)(p0.x + perp2.x), (float)(p0.y + perp2.y), (float)(p0.z + perp2.z)).color(r, g, b, a).next();
-            buf.vertex(mat, (float)(p0.x - perp2.x), (float)(p0.y - perp2.y), (float)(p0.z - perp2.z)).color(r, g, b, a).next();
-            buf.vertex(mat, (float)(p1.x - perp2.x), (float)(p1.y - perp2.y), (float)(p1.z - perp2.z)).color(r, g, b, a).next();
-            buf.vertex(mat, (float)(p1.x + perp2.x), (float)(p1.y + perp2.y), (float)(p1.z + perp2.z)).color(r, g, b, a).next();
+            buf.vertex(mat, (float)(p0.x + perp2.x), (float)(p0.y + perp2.y), (float)(p0.z + perp2.z))
+                    .color(base, base, base, (int)(CHAIN_ALPHA * 255)).next();
+            buf.vertex(mat, (float)(p0.x - perp2.x), (float)(p0.y - perp2.y), (float)(p0.z - perp2.z))
+                    .color(base, base, base, (int)(CHAIN_ALPHA * 255)).next();
+            buf.vertex(mat, (float)(p1.x - perp2.x), (float)(p1.y - perp2.y), (float)(p1.z - perp2.z))
+                    .color(base, base, base, (int)(CHAIN_ALPHA * 255)).next();
+            buf.vertex(mat, (float)(p1.x + perp2.x), (float)(p1.y + perp2.y), (float)(p1.z + perp2.z))
+                    .color(base, base, base, (int)(CHAIN_ALPHA * 255)).next();
         }
 
         tes.draw();
         RenderSystem.enableCull();
-    }
-
-    private static Vec3d findGroundY(World world, Vec3d pos) {
-        BlockPos bp = new BlockPos(
-                MathHelper.floor(pos.x),
-                MathHelper.floor(pos.y),
-                MathHelper.floor(pos.z)
-        );
-        while (bp.getY() > 0 && world.isAir(bp)) {
-            bp = bp.down();
-        }
-        return new Vec3d(pos.x, bp.getY() + 1.0, pos.z);
-    }
-
-    private static Vec3d calculateChainPosition(Vec3d f, Vec3d t, float u, double sag) {
-        double x = f.x + (t.x - f.x) * u;
-        double y = f.y + (t.y - f.y) * u - sag * (1 - Math.cos(Math.PI * u));
-        double z = f.z + (t.z - f.z) * u;
-        return new Vec3d(x, y, z);
     }
 }
